@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import './GameBoard.css';
 import { saveGameState, loadGameState, clearGameState, StoredGameState, loadGameMode, clearGameMode, saveGameMode } from '../../utils/localStorage';
 import WaitingOverlay from './WaitingOverlay';
@@ -79,12 +79,12 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
 
   // Helper: Get effective status - if both players present but status is waiting, treat as in_progress
   // This fixes the issue where computer mode shows "waiting" when game has actually started
-  const getEffectiveStatus = (): 'waiting' | 'in_progress' | 'completed' | 'draw' => {
+  const getEffectiveStatus = useCallback((): 'waiting' | 'in_progress' | 'completed' | 'draw' => {
     if (gameState.player1 && gameState.player2 && gameState.status === 'waiting') {
       return 'in_progress';
     }
     return gameState.status;
-  };
+  }, [gameState.player1, gameState.player2, gameState.status]);
 
   // Keep usernameRef current to avoid stale closures in handlers
   useEffect(() => { usernameRef.current = username; }, [username]);
@@ -474,13 +474,11 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
     };
   }, [websocket, username]); // Include username to avoid stale closure
 
-  // Modal state for end-of-game
-  const [showEndModal, setShowEndModal] = useState(false);
-
-  // Show modal when game ends
+  // Notify leaderboard when game ends
   useEffect(() => {
-    if (gameState.status === 'completed' || gameState.status === 'draw') {
-      setShowEndModal(true);
+    const gameEnded = gameState.status === 'completed' || gameState.status === 'draw';
+    
+    if (gameEnded) {
       // Notify leaderboard to refresh immediately when game ends
       try {
         // Dispatch a CustomEvent with details so listeners can optimistically
@@ -490,26 +488,8 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
       } catch (err) {
         console.error('Failed to dispatch leaderboard update event:', err);
       }
-    } else {
-      setShowEndModal(false);
     }
   }, [gameState.status, gameState.winner?.username]);
-
-  const handleReplay = useCallback(() => {
-    // Replay by sending a fresh join message with same username and game mode
-    try {
-      const mode = loadGameMode();
-      if (!websocket) return;
-      websocket.send(JSON.stringify({ type: 'join', payload: { username, gameMode: mode } }));
-      // Dispatch event to update active users immediately
-      window.dispatchEvent(new CustomEvent('game:join'));
-      // Clear pending move and hide modal until server responds
-      setPendingMove(null);
-      setShowEndModal(false);
-    } catch (err) {
-      console.error('Replay failed:', err);
-    }
-  }, [websocket, username]);
 
   const handleExit = useCallback(() => {
     // Exit to mode selection: clear only game state and game mode, keep username
@@ -665,7 +645,7 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
       setPendingMove(null);
       pendingMoveTimeoutRef.current = null;
     }, PENDING_MOVE_TIMEOUT_MS);
-  }, [isMyTurn, gameState, username, websocket]);
+  }, [isMyTurn, gameState, username, websocket, getEffectiveStatus]);
 
   // Ensure board is always an array - defensive check
   const board: number[][] = (gameState.board && Array.isArray(gameState.board) && gameState.board.length > 0)
