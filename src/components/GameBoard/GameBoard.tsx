@@ -6,8 +6,7 @@ import {
   clearGameState,
   StoredGameState,
   loadGameMode,
-  clearGameMode,
-  saveGameMode
+  clearGameMode
 } from '../../utils/localStorage';
 import WaitingOverlay from './WaitingOverlay';
 import GameFinished from '../GameFinished/GameFinished';
@@ -58,7 +57,6 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
 
   const usernameRef = useRef<string>(username);
   const pendingMoveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const friendWaitingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const getEffectiveStatus = useCallback((): 'waiting' | 'in_progress' | 'completed' | 'draw' => {
     if (gameState.player1 && gameState.player2 && gameState.status === 'waiting') return 'in_progress';
@@ -68,7 +66,6 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
   useEffect(() => { usernameRef.current = username; }, [username]);
 
   const PENDING_MOVE_TIMEOUT_MS = 2000;
-  const FRIEND_WAITING_TIMEOUT_MS = 10000;
 
   useEffect(() => {
     if (gameState.status !== 'waiting' || (gameState.player1 && gameState.player2)) {
@@ -186,7 +183,7 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
             setIsLoadingRematch(false);
           }
         }
-      } catch (err) {
+      } catch {
         // ignore parsing errors
       }
     };
