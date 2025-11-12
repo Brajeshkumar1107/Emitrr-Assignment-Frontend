@@ -103,6 +103,7 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
       gameStartTimeout = setTimeout(() => {
         if (!messageReceived && websocket.readyState === WebSocket.OPEN) {
           // No gameStart received within timeout - continue silently
+          void 0; // eslint-disable-next-line no-unused-expressions
         }
       }, 5000);
     }
@@ -154,6 +155,7 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
 
         if (data.type === 'gameStart' || data.type === 'gameState') {
           const payload = data.payload || {};
+          void payload; // Mark payload as intentionally unused if needed for type checking
           let board = payload.board;
           if (!Array.isArray(board)) board = Array(6).fill(null).map(() => Array(7).fill(0));
 
