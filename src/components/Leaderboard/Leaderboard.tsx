@@ -25,7 +25,6 @@ const Leaderboard: React.FC = () => {
         const data = await response.json();
         setLeaderboard(data);
       } catch (error) {
-        console.error('Error fetching leaderboard:', error);
         setError(error instanceof Error ? error.message : 'Failed to load leaderboard');
       } finally {
         setLoading(false);
@@ -39,11 +38,6 @@ const Leaderboard: React.FC = () => {
     const onUpdate = (e: Event) => {
       try {
         const custom = e as CustomEvent<any>;
-        if (custom && custom.detail) {
-          console.log('[Leaderboard] Received leaderboard:update event, detail=', custom.detail);
-        } else {
-          console.log('[Leaderboard] Received leaderboard:update event');
-        }
         // Optimistically update leaderboard when we have a winner (useful when backend DB is disabled)
         try {
           const detail = (custom && custom.detail) || {};
@@ -77,10 +71,10 @@ const Leaderboard: React.FC = () => {
             });
           }
         } catch (err) {
-          console.error('[Leaderboard] Optimistic update failed', err);
+          // ignore
         }
       } catch (err) {
-        console.error('[Leaderboard] Error reading event detail', err);
+        // ignore
       }
       setLoading(true);
       fetchLeaderboard();

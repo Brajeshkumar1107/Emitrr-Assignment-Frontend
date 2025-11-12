@@ -43,9 +43,8 @@ export const saveGameState = (gameState: StoredGameState): void => {
     const storage = getStorage();
     storage.setItem(STORAGE_KEYS.GAME_STATE, JSON.stringify(gameState));
     storage.setItem(STORAGE_KEYS.LAST_UPDATED, Date.now().toString());
-    console.log('Game state saved to session storage');
   } catch (error) {
-    console.error('Error saving game state to session storage:', error);
+    // ignore storage save errors
   }
 };
 
@@ -56,11 +55,10 @@ export const loadGameState = (): StoredGameState | null => {
     const stored = storage.getItem(STORAGE_KEYS.GAME_STATE);
     if (stored) {
       const gameState = JSON.parse(stored);
-      console.log('Game state loaded from session storage');
       return gameState;
     }
   } catch (error) {
-    console.error('Error loading game state from session storage:', error);
+    // ignore load errors
   }
   return null;
 };
@@ -73,7 +71,7 @@ export const saveUsername = (username: string): void => {
     // Update last-updated timestamp so stored data is considered valid
     storage.setItem(STORAGE_KEYS.LAST_UPDATED, Date.now().toString());
   } catch (error) {
-    console.error('Error saving username to session storage:', error);
+    // ignore
   }
 };
 
@@ -85,7 +83,7 @@ export const loadUsername = (): string | null => {
     if (!isStoredDataValid()) return null;
     return storage.getItem(STORAGE_KEYS.USERNAME);
   } catch (error) {
-    console.error('Error loading username from session storage:', error);
+    // ignore
     return null;
   }
 };
@@ -98,7 +96,7 @@ export const saveGameMode = (gameMode: 'friend' | 'computer'): void => {
     // Update last-updated timestamp so stored data is considered valid
     storage.setItem(STORAGE_KEYS.LAST_UPDATED, Date.now().toString());
   } catch (error) {
-    console.error('Error saving game mode to session storage:', error);
+    // ignore
   }
 };
 
@@ -112,7 +110,7 @@ export const loadGameMode = (): 'friend' | 'computer' | null => {
     }
     return null;
   } catch (error) {
-    console.error('Error loading game mode from session storage:', error);
+    // ignore
     return null;
   }
 };
@@ -125,9 +123,8 @@ export const clearGameData = (): void => {
     storage.removeItem(STORAGE_KEYS.USERNAME);
     storage.removeItem(STORAGE_KEYS.GAME_MODE);
     storage.removeItem(STORAGE_KEYS.LAST_UPDATED);
-    console.log('Game data cleared from session storage');
   } catch (error) {
-    console.error('Error clearing game data from session storage:', error);
+    // ignore
   }
 };
 
@@ -137,9 +134,8 @@ export const clearGameState = (): void => {
     const storage = getStorage();
     storage.removeItem(STORAGE_KEYS.GAME_STATE);
     storage.removeItem(STORAGE_KEYS.LAST_UPDATED);
-    console.log('Game state cleared from session storage');
   } catch (error) {
-    console.error('Error clearing game state from session storage:', error);
+    // ignore
   }
 };
 
@@ -149,9 +145,8 @@ export const clearGameMode = (): void => {
     const storage = getStorage();
     storage.removeItem(STORAGE_KEYS.GAME_MODE);
     storage.removeItem(STORAGE_KEYS.LAST_UPDATED);
-    console.log('Game mode cleared from session storage');
   } catch (error) {
-    console.error('Error clearing game mode from session storage:', error);
+    // ignore
   }
 };
 

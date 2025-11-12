@@ -140,7 +140,6 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
     
     // Don't set up handlers if WebSocket is already closed or closing
     if (websocket.readyState === WebSocket.CLOSED || websocket.readyState === WebSocket.CLOSING) {
-      console.warn('[8] GameBoard: WebSocket is closed/closing, skipping handler setup');
       return;
     }
     
@@ -156,21 +155,11 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
       gameStartTimeout = setTimeout(() => {
         if (!messageReceived && websocket.readyState === WebSocket.OPEN) {
           const elapsed = Date.now() - handlerSetupTime;
-          console.error('🚨 [8] GameBoard: CRITICAL ERROR - No gameStart message received!');
-          console.error(`[8] GameBoard: Time elapsed since handler setup: ${elapsed}ms`);
-          console.error('[8] GameBoard: WebSocket readyState:', websocket.readyState);
-          console.error('[8] GameBoard: WebSocket URL:', websocket.url);
-          console.error('[8] GameBoard: Possible causes:');
-          console.error('  1. Backend is not running - Run: cd connect4/backend/cmd/server && go run main.go');
-          console.error('  2. Backend is not receiving join message - Check backend terminal for [BACKEND-6] logs');
-          console.error('  3. Backend is not sending gameStart message - Check backend terminal for [BACKEND-20] logs');
-          console.error('  4. WebSocket connection issue - Verify backend is accessible at ws://localhost:8080/ws');
-          console.error('[8] GameBoard: ACTION REQUIRED: Check backend terminal for logs starting with [BACKEND-]');
-          console.error('[8] GameBoard: If backend is running, you should see [BACKEND-1] through [BACKEND-20] logs');
+          // No gameStart received within timeout - silently continue
         }
       }, 5000); // 5 seconds timeout
     } else {
-      // WebSocket not yet open; will set up handler when it opens (debug log removed)
+      // WebSocket not yet open; will set up handler when it opens
     }
     
     // Set up message handler
@@ -190,7 +179,7 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
             const detail = data.payload || {};
             window.dispatchEvent(new CustomEvent('leaderboard:update', { detail }));
           } catch (err) {
-            console.error('[9] GameBoard: Failed to dispatch leaderboard:update event from server broadcast', err);
+            // ignore
           }
           return;
         }
@@ -211,16 +200,13 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
         if (data.type === 'playAgainUpdate') {
           const payload = data.payload || {};
           const requests = payload.playAgainRequests || [];
-          console.log('[GameBoard] Play again update:', requests);
           // If both players have requested or bot is in game, close popup and wait for new gameStart
           // For friend mode, if only 1 player has requested, popup stays open with "waiting..." message
           if (requests.length >= 2 || requests.includes('AI Bot')) {
             // Rematch accepted! Wait for gameStart message to show new board
             // Keep popup visible briefly with "Starting new game..." message
-            console.log('[GameBoard] Both players accepted rematch, waiting for new game...');
           } else if (requests.length === 1) {
             // Only one player requested so far, show waiting message
-            console.log('[GameBoard] Waiting for opponent to accept rematch...');
           }
           return;
         }
@@ -228,7 +214,6 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
         // Handle rematchTimeout - opponent didn't respond in time
         if (data.type === 'rematchTimeout') {
           const payload = data.payload || {};
-          console.log('[GameBoard] Rematch timeout:', payload.message);
           // Show error message in popup
           setFinishedData(prev => prev ? {
             ...prev,
@@ -241,7 +226,6 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
         // Handle opponentExited - opponent left the game
         if (data.type === 'opponentExited') {
           const payload = data.payload || {};
-          console.log('[GameBoard] Opponent exited:', payload.message);
           // Could show a message to the user that opponent exited
           // For now, end the game and show the popup
           setGameFinished(true);
@@ -334,18 +318,14 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
               if (normalized) {
                 normalizedPlayer1 = normalized;
               } else {
-                console.error('✗ Failed to normalize player1 from payload:', player1FromPayload);
                 // For gameStart, we need players - don't keep undefined
                 if (!isGameStart) {
                   normalizedPlayer1 = prevState.player1;
                 }
               }
             } else {
-              console.warn('⚠ No player1 in payload');
               if (!isGameStart) {
                 // Keeping previous player1
-              } else {
-                console.error('✗ gameStart message missing player1!');
               }
             }
             
@@ -354,27 +334,20 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
               if (normalized) {
                 normalizedPlayer2 = normalized;
               } else {
-                console.error('✗ Failed to normalize player2 from payload:', player2FromPayload);
                 // For gameStart, we need players - don't keep undefined
                 if (!isGameStart) {
                   normalizedPlayer2 = prevState.player2;
                 }
               }
             } else {
-              console.warn('⚠ No player2 in payload');
               if (!isGameStart) {
                 // Keeping previous player2
-              } else {
-                console.error('✗ gameStart message missing player2!');
               }
             }
             
-            // Critical check: if gameStart but no players, log error
+            // Critical check: if gameStart but no players, skip
             if (isGameStart && (!normalizedPlayer1 || !normalizedPlayer2)) {
-              console.error('🚨 CRITICAL: gameStart message received but players are missing!');
-              console.error('  Player1:', normalizedPlayer1);
-              console.error('  Player2:', normalizedPlayer2);
-              console.error('  Full payload:', JSON.stringify(payload, null, 2));
+              // gameStart message received but players are missing
             }
             
             // Handle status - backend sends Status (capital S) in GameState struct
@@ -442,12 +415,10 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
             return newState;
           });
         } else if (data.type === 'error') {
-          console.error('Game error:', data.payload);
-          // You could show an error message to the user here
+          // server-side error received
         }
       } catch (error) {
-        console.error('[9] GameBoard: Error parsing WebSocket message:', error);
-        console.error('[9] GameBoard: Raw message data:', event.data);
+        // parsing error - ignore
       }
     };
     
@@ -474,9 +445,7 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
         if (gameStartTimeout === null && websocket.readyState === WebSocket.OPEN) {
           gameStartTimeout = setTimeout(() => {
             if (!messageReceived && websocket.readyState === WebSocket.OPEN) {
-              console.error('🚨 [8] GameBoard: CRITICAL ERROR - No gameStart message received!');
-              console.error('[8] GameBoard: WebSocket readyState:', websocket.readyState);
-              console.error('[8] GameBoard: Backend may not be running or not responding');
+              // No gameStart received within timeout - silently continue
             }
           }, 5000);
         }
@@ -487,7 +456,6 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
     const originalOnError = websocket.onerror;
     if (originalOnError) {
       websocket.onerror = (error) => {
-        console.error('[8] GameBoard: WebSocket error in GameBoard:', error);
         originalOnError.call(websocket, error);
       };
     }
@@ -536,30 +504,23 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
       // reload so App will re-read gameMode and show selection
       window.location.reload();
     } catch (err) {
-      console.error('Exit failed:', err);
+      // ignore
     }
   }, []);
 
   const handleGameFinishedPlayAgain = useCallback(() => {
-    if (!websocket || websocket.readyState !== WebSocket.OPEN) {
-      console.error('WebSocket not ready');
-      return;
-    }
+    if (!websocket || websocket.readyState !== WebSocket.OPEN) return;
     setIsLoadingRematch(true);
     try {
       websocket.send(JSON.stringify({ type: 'playAgain', payload: {} }));
       // Keep popup visible while waiting for server to create new game
     } catch (err) {
-      console.error('Play again failed:', err);
       setIsLoadingRematch(false);
     }
   }, [websocket]);
 
   const handleGameFinishedExit = useCallback(() => {
-    if (!websocket || websocket.readyState !== WebSocket.OPEN) {
-      console.error('WebSocket not ready');
-      return;
-    }
+    if (!websocket || websocket.readyState !== WebSocket.OPEN) return;
     setIsLoadingRematch(true);
     try {
       websocket.send(JSON.stringify({ type: 'exitGame', payload: {} }));
@@ -568,7 +529,6 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
       clearGameMode();
       window.location.reload();
     } catch (err) {
-      console.error('Exit game failed:', err);
       setIsLoadingRematch(false);
     }
   }, [websocket]);
@@ -621,10 +581,7 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
     const currentPlayer = isPlayer1 ? 1 : 2;
     // If WebSocket is not open, don't optimistically update - avoid showing a
     // move that the server never receives.
-    if (!websocket || websocket.readyState !== WebSocket.OPEN) {
-      console.error('[GameBoard.handleColumnClick] Cannot send move - WebSocket not open');
-      return;
-    }
+    if (!websocket || websocket.readyState !== WebSocket.OPEN) return;
 
     // Capture previous board in case we need to revert optimistic update
     const prevBoard = gameState.board.map((r) => [...r]);
@@ -645,7 +602,6 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
           currentTurn: 3 - currentPlayer,
         } as GameState;
       } catch (err) {
-        console.error('Error applying optimistic move:', err);
         return prev;
       }
     });
@@ -659,11 +615,8 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
 
     // Send move to server and revert optimistic update on failure
     try {
-      websocket.send(JSON.stringify({ type: 'move', payload: { column: col } }));
-      // Log the move action for debugging/play tracing
-      console.log(`[GameBoard] Move sent: column=${col}, player=${currentPlayer}`);
+  websocket.send(JSON.stringify({ type: 'move', payload: { column: col } }));
     } catch (err) {
-      console.error('WebSocket send error:', err);
       // Revert optimistic update
       setGameState((prev) => ({
         ...prev,
@@ -769,7 +722,6 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
                           (!currentState?.player1 || !currentState?.player2);
       
       if (stillWaiting && websocket && websocket.readyState === WebSocket.OPEN) {
-        console.log('[GameBoard] 10-second timeout expired - switching to bot mode');
         
         // Switch to computer mode
         saveGameMode('computer');

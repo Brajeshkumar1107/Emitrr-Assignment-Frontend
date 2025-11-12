@@ -15,7 +15,6 @@ const GameModeSelection: React.FC<GameModeSelectionProps> = ({ onSelectMode }) =
           <button 
             className="mode-button computer-mode"
             onClick={() => {
-              console.log('🔴 [1] GameModeSelection: User clicked "Play with Computer"');
               onSelectMode('computer');
             }}
           >
@@ -26,7 +25,6 @@ const GameModeSelection: React.FC<GameModeSelectionProps> = ({ onSelectMode }) =
           <button 
             className="mode-button friend-mode"
             onClick={() => {
-              console.log('🟢 [1] GameModeSelection: User clicked "Play with Friend"');
               onSelectMode('friend');
             }}
           >

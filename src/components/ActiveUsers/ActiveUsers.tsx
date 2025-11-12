@@ -23,7 +23,6 @@ const ActiveUsers: React.FC = () => {
         setActiveUsers(data);
         setError(null);
       } catch (err) {
-        console.error('Error fetching active users:', err);
         setError('Failed to load active users');
       } finally {
         setLoading(false);

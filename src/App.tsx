@@ -35,7 +35,6 @@ const App: React.FC = () => {
    */
   const connectWebSocket = useCallback(
     (username: string, mode: 'friend' | 'computer') => {
-      console.log(`[4] App.connectWebSocket: Starting connection for username="${username}", mode="${mode}"`);
 
       const MAX_RETRIES = 5;
       const INITIAL_RETRY_DELAY = 1000;
@@ -44,50 +43,44 @@ const App: React.FC = () => {
       let createdWs: WebSocket | null = null;
 
       const connect = () => {
-        if (isUnloadingRef.current) {
-          console.log('[App.connectWebSocket] Page is unloading, aborting connect.');
-          return;
-        }
+        if (isUnloadingRef.current) return;
 
         // Close existing socket if necessary
         if (activeWsRef.current) {
           const state = activeWsRef.current.readyState;
-          if (state === WebSocket.OPEN || state === WebSocket.CONNECTING) {
-            console.log('[App.connectWebSocket] Active WebSocket already exists, skipping new connection.');
-            return;
-          }
+          if (state === WebSocket.OPEN || state === WebSocket.CONNECTING) return;
           try {
             activeWsRef.current?.close();
           } catch (e) {}
           activeWsRef.current = null;
         }
 
-        // ✅ Determine WebSocket URL
+        // ✅ Determine candidate WebSocket URLs (try sequentially on retries)
         const envWs = process.env.REACT_APP_WS_URL;
-        let wsUrl = envWs || '';
         const host = window.location.hostname;
-        // If no env provided, choose based on host
-        if (!wsUrl) {
-          if (host && host !== 'localhost' && host !== '127.0.0.1') {
-            wsUrl = 'wss://emitrr-assignment-backend-production.up.railway.app/ws';
-          } else {
-            wsUrl = 'ws://localhost:8080/ws';
-          }
-        } else {
-          // If env var was provided but points to localhost (e.g. left default at build time)
-          // and we're running on a production host, prefer the deployed backend instead.
-          if (host && host !== 'localhost' && host !== '127.0.0.1' && envWs && envWs.includes('localhost')) {
-            wsUrl = 'wss://emitrr-assignment-backend-production.up.railway.app/ws';
-          }
+
+        const candidates: string[] = [];
+        if (envWs) candidates.push(envWs);
+
+        // Primary deployed backend (Railway)
+        candidates.push('wss://emitrr-assignment-backend-production.up.railway.app/ws');
+
+        // If frontend is served from same host (proxy), try same origin wss
+        if (host && host !== 'localhost' && host !== '127.0.0.1') {
+          candidates.push(`wss://${host}/ws`);
         }
 
-        console.log(`[5] App.connectWebSocket: Creating WebSocket connection to "${wsUrl}"`);
+        // Local dev fallback
+        candidates.push('ws://localhost:8080/ws');
+
+        // Choose a candidate based on current retry count so subsequent retries try next candidate
+        const candidateIndex = retryCount % candidates.length;
+  const wsUrl = candidates[candidateIndex];
         const ws = new WebSocket(wsUrl);
         createdWs = ws;
         activeWsRef.current = ws;
 
         ws.onopen = () => {
-          console.log(`[6] WebSocket connection opened to ${wsUrl}`);
           setIsConnected(true);
           setWebsocket(ws);
           retryCount = 0;
@@ -101,31 +94,17 @@ const App: React.FC = () => {
           setTimeout(() => {
             if (ws.readyState === WebSocket.OPEN) {
               ws.send(JSON.stringify(joinMessage));
-              console.log('[7] Join message sent:', joinMessage);
               window.dispatchEvent(new CustomEvent('game:join'));
-            } else {
-              console.warn('[7] WebSocket not open, skipping join message.');
             }
           }, 100);
         };
-
-        ws.onerror = (error) => {
-          console.error('[App.connectWebSocket] WebSocket error:', error);
+        ws.onerror = () => {
           setIsConnected(false);
         };
 
         ws.onclose = (event) => {
-          console.warn(`[App.connectWebSocket] Connection closed (code=${event?.code}, retry=${retryCount})`);
-
-          if (isUnloadingRef.current) {
-            console.log('[App.connectWebSocket] Page unloading, no reconnect.');
-            return;
-          }
-
-          if (activeWsRef.current !== ws) {
-            console.log('[App.connectWebSocket] Closed socket is stale, ignoring.');
-            return;
-          }
+          if (isUnloadingRef.current) return;
+          if (activeWsRef.current !== ws) return;
 
           setIsConnected(false);
           setWebsocket(null);
@@ -134,15 +113,12 @@ const App: React.FC = () => {
           if (retryCount < MAX_RETRIES) {
             retryCount++;
             retryDelay *= 2;
-            console.log(`[App.connectWebSocket] Retrying in ${retryDelay}ms (attempt ${retryCount}/${MAX_RETRIES})`);
+            // Small delay before next attempt - the connect() function will pick the next candidateURL
             setTimeout(connect, retryDelay);
           } else {
-            console.error('[App.connectWebSocket] Max retries reached. Giving up.');
             alert('Unable to connect to game server. Please try again later.');
           }
         };
-
-        console.log(`[5.5] App.connectWebSocket: WebSocket created, waiting for open...`);
       };
 
       connect();
@@ -190,7 +166,6 @@ const App: React.FC = () => {
   const handleLogin = (name: string) => setUsername(name);
 
   const handleModeSelection = (mode: 'friend' | 'computer') => {
-    console.log(`[2] handleModeSelection: mode="${mode}" username="${username}"`);
     setGameMode(mode);
     if (username) connectWebSocket(username, mode);
   };
@@ -200,7 +175,6 @@ const App: React.FC = () => {
     if (didAutoReconnect.current) return;
     didAutoReconnect.current = true;
     if (username && gameMode && !websocket && !isConnected) {
-      console.log('[App] Auto-reconnecting with saved username and game mode');
       connectWebSocket(username, gameMode);
     }
   }, [username, gameMode, websocket, isConnected, connectWebSocket]);
