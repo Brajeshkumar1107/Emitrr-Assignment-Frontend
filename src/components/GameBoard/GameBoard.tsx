@@ -117,6 +117,10 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
 
       try {
         const data = JSON.parse(event.data);
+        // DEBUG: temporary log to trace incoming WebSocket messages during rematch troubleshooting
+        // (remove after debugging)
+        // eslint-disable-next-line no-console
+        console.debug('[GameBoard WS RX]', data.type, data.payload || data);
 
         if (data.type === 'leaderboardUpdate') {
           window.dispatchEvent(new CustomEvent('leaderboard:update', { detail: data.payload || {} }));
