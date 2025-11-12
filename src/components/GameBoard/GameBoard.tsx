@@ -4,10 +4,10 @@ import {
   saveGameState,
   loadGameState,
   clearGameState,
-  StoredGameState,
-  clearGameMode
-} from '../../utils/localStorage'; // removed loadGameMode (unused)
-import GameFinished from '../GameFinished/GameFinished'; // removed WaitingOverlay (unused)
+  clearGameMode,
+  StoredGameState
+} from '../../utils/localStorage';
+import GameFinished from '../GameFinished/GameFinished';
 
 interface GameState {
   board: number[][];
@@ -25,8 +25,13 @@ interface GameBoardProps {
 }
 
 const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
-  const debug = (...args: any[]) => console.log('[GameBoard]', ...args);
+  const debug = (...args: any[]) => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[GameBoard]', ...args);
+    }
+  };
 
+  // 🧠 Initialize from localStorage if available
   const getInitialState = (): GameState => {
     const stored = loadGameState();
     if (stored && stored.player1 && stored.player2) {
@@ -41,6 +46,7 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
         lastMove: stored.lastMove,
       };
     }
+    debug('Starting fresh game state.');
     return {
       board: Array(6).fill(null).map(() => Array(7).fill(0)),
       currentTurn: 1,
@@ -56,10 +62,10 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
   const usernameRef = useRef<string>(username);
   useEffect(() => { usernameRef.current = username; }, [username]);
 
-  // Save state
+  // 💾 Persist game state
   useEffect(() => {
     if (gameState.status !== 'waiting' || (gameState.player1 && gameState.player2)) {
-      saveGameState({
+      const stateToSave: StoredGameState = {
         board: gameState.board,
         currentTurn: gameState.currentTurn,
         status: gameState.status,
@@ -67,14 +73,15 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
         player2: gameState.player2,
         winner: gameState.winner,
         lastMove: gameState.lastMove,
-      });
+      };
+      saveGameState(stateToSave);
     }
   }, [gameState]);
 
-  // WebSocket message handling
+  // 🌐 WebSocket event handling
   useEffect(() => {
     if (!websocket) return;
-    debug('WebSocket effect mounted.');
+    debug('WebSocket effect mounted. ReadyState:', websocket.readyState);
 
     const messageHandler = (event: MessageEvent) => {
       const data = JSON.parse(event.data);
@@ -124,7 +131,7 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
         }
 
         default:
-          debug('⚪ Unknown WS type:', data.type);
+          debug('⚪ Unknown message type:', data.type);
       }
     };
 
@@ -141,6 +148,7 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
     };
   }, [websocket]);
 
+  // 🔁 Play Again handler
   const handleGameFinishedPlayAgain = useCallback(() => {
     if (!websocket || websocket.readyState !== WebSocket.OPEN) {
       debug('❌ WS not open for playAgain');
@@ -151,6 +159,7 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
     websocket.send(JSON.stringify({ type: 'playAgain', payload: {} }));
   }, [websocket]);
 
+  // 🚪 Exit game handler
   const handleGameFinishedExit = useCallback(() => {
     if (!websocket || websocket.readyState !== WebSocket.OPEN) {
       debug('❌ WS not open for exitGame');
@@ -164,6 +173,7 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
     window.location.reload();
   }, [websocket]);
 
+  // 🟡 Move click handler
   const handleColumnClick = useCallback((col: number) => {
     if (!websocket || websocket.readyState !== WebSocket.OPEN) return;
     debug('🟡 Move clicked, sending column:', col);
@@ -182,11 +192,15 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
           isLoading={isLoadingRematch}
         />
       )}
+
       <div className="status">
         {gameState.status === 'waiting' && 'Waiting for opponent...'}
-        {gameState.status === 'in_progress' && "Game in progress..."}
-        {gameState.status === 'completed' && (gameState.winner?.username === username ? 'You won!' : 'You lost!')}
+        {gameState.status === 'in_progress' && 'Game in progress...'}
+        {gameState.status === 'completed' &&
+          (gameState.winner?.username === username ? 'You won!' : 'You lost!')}
+        {gameState.status === 'draw' && 'Game ended in a draw!'}
       </div>
+
       <div className="board">
         {gameState.board.map((row, rIdx) => (
           <div key={rIdx} className="row">
