@@ -74,9 +74,26 @@ const App: React.FC = () => {
         activeWsRef.current = null;
       }
 
-  // Get WebSocket URL from environment variable or fallback to default (local dev)
-  // Use ws:// for local development; production should set REACT_APP_WS_URL to a wss:// URL
-  const wsUrl = process.env.REACT_APP_WS_URL || 'ws://localhost:8080/ws';
+      // Determine WebSocket URL:
+      // 1. If REACT_APP_WS_URL is provided (build-time env), use it.
+      // 2. Otherwise, if running on a non-localhost host (production), use the deployed Railway wss URL.
+      // 3. Fallback to local ws://localhost:8080/ws for development.
+      const envWs = process.env.REACT_APP_WS_URL;
+      let wsUrl = envWs || '';
+      if (!wsUrl) {
+        try {
+          const host = window.location.hostname;
+          if (host && host !== 'localhost' && host !== '127.0.0.1') {
+            // Production - use secure wss to the deployed backend on Railway
+            wsUrl = 'wss://emitrr-assignment-backend-production.up.railway.app/ws';
+          } else {
+            // Local development
+            wsUrl = 'ws://localhost:8080/ws';
+          }
+        } catch (e) {
+          wsUrl = 'ws://localhost:8080/ws';
+        }
+      }
       console.log(`[5] App.connectWebSocket: Creating WebSocket connection to "${wsUrl}"`);
   const ws = new WebSocket(wsUrl);
   createdWs = ws;
