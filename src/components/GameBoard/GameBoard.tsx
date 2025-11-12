@@ -154,7 +154,7 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
     if (websocket.readyState === WebSocket.OPEN) {
       gameStartTimeout = setTimeout(() => {
         if (!messageReceived && websocket.readyState === WebSocket.OPEN) {
-          const elapsed = Date.now() - handlerSetupTime;
+          // const elapsed = Date.now() - handlerSetupTime;
           // No gameStart received within timeout - silently continue
         }
       }, 5000); // 5 seconds timeout
