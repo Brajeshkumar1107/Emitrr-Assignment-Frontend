@@ -74,8 +74,9 @@ const App: React.FC = () => {
         activeWsRef.current = null;
       }
 
-      // Get WebSocket URL from environment variable or fallback to default
-      const wsUrl = process.env.REACT_APP_WS_URL || 'ws:https://emitrr-assignment-backend-production.up.railway.app/ws';
+  // Get WebSocket URL from environment variable or fallback to default (local dev)
+  // Use ws:// for local development; production should set REACT_APP_WS_URL to a wss:// URL
+  const wsUrl = process.env.REACT_APP_WS_URL || 'ws://localhost:8080/ws';
       console.log(`[5] App.connectWebSocket: Creating WebSocket connection to "${wsUrl}"`);
   const ws = new WebSocket(wsUrl);
   createdWs = ws;

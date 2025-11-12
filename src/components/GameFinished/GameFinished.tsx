@@ -8,6 +8,9 @@ interface GameFinishedProps {
   onPlayAgain: () => void;
   onExit: () => void;
   isLoading?: boolean;
+  timedOut?: boolean;
+  timeoutMessage?: string;
+  opponentExited?: boolean;
 }
 
 const GameFinished: React.FC<GameFinishedProps> = ({
@@ -17,6 +20,9 @@ const GameFinished: React.FC<GameFinishedProps> = ({
   onPlayAgain,
   onExit,
   isLoading = false,
+  timedOut = false,
+  timeoutMessage = '',
+  opponentExited = false,
 }) => {
   return (
     <div className="game-finished-overlay">
@@ -25,7 +31,19 @@ const GameFinished: React.FC<GameFinishedProps> = ({
           <h2 className="game-finished-title">Game Over!</h2>
           
           <div className="game-finished-result">
-            {isDraw ? (
+            {timedOut ? (
+              <>
+                <div className="result-icon error-icon">⏰</div>
+                <p className="result-text">Rematch Cancelled</p>
+                <p className="result-subtitle">{timeoutMessage}</p>
+              </>
+            ) : opponentExited ? (
+              <>
+                <div className="result-icon error-icon">👋</div>
+                <p className="result-text">Opponent Left</p>
+                <p className="result-subtitle">Your opponent has exited the game</p>
+              </>
+            ) : isDraw ? (
               <>
                 <div className="result-icon draw-icon">🤝</div>
                 <p className="result-text">It's a Draw!</p>
@@ -52,7 +70,7 @@ const GameFinished: React.FC<GameFinishedProps> = ({
             <button
               className="btn-play-again"
               onClick={onPlayAgain}
-              disabled={isLoading}
+              disabled={isLoading || timedOut || opponentExited}
             >
               {isLoading ? 'Loading...' : '🔄 Play Again'}
             </button>

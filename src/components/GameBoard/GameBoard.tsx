@@ -70,6 +70,9 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
     winner?: string | null;
     isDraw: boolean;
     botWon?: boolean;
+    timedOut?: boolean;
+    timeoutMessage?: string;
+    opponentExited?: boolean;
   } | null>(null);
   const [isLoadingRematch, setIsLoadingRematch] = useState(false);
   // Refs to avoid stale closures in WebSocket handlers and manage timeouts
@@ -207,8 +210,31 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
         // Handle playAgainUpdate - shows who has requested play again
         if (data.type === 'playAgainUpdate') {
           const payload = data.payload || {};
-          console.log('[GameBoard] Play again update:', payload.playAgainRequests);
-          // Could update UI to show who wants to play again, but for now just log
+          const requests = payload.playAgainRequests || [];
+          console.log('[GameBoard] Play again update:', requests);
+          // If both players have requested or bot is in game, close popup and wait for new gameStart
+          // For friend mode, if only 1 player has requested, popup stays open with "waiting..." message
+          if (requests.length >= 2 || requests.includes('AI Bot')) {
+            // Rematch accepted! Wait for gameStart message to show new board
+            // Keep popup visible briefly with "Starting new game..." message
+            console.log('[GameBoard] Both players accepted rematch, waiting for new game...');
+          } else if (requests.length === 1) {
+            // Only one player requested so far, show waiting message
+            console.log('[GameBoard] Waiting for opponent to accept rematch...');
+          }
+          return;
+        }
+
+        // Handle rematchTimeout - opponent didn't respond in time
+        if (data.type === 'rematchTimeout') {
+          const payload = data.payload || {};
+          console.log('[GameBoard] Rematch timeout:', payload.message);
+          // Show error message in popup
+          setFinishedData(prev => prev ? {
+            ...prev,
+            timedOut: true,
+            timeoutMessage: payload.message
+          } : null);
           return;
         }
 
@@ -223,6 +249,7 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
             winner: null,
             isDraw: false,
             botWon: false,
+            opponentExited: true,
           });
           return;
         }
@@ -402,6 +429,16 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
             
             // Clear pending move when we receive server update
             setPendingMove(null);
+            // If a new game has started (rematch), clear any finished popup and loading state
+            if (newState.status === 'in_progress') {
+              try {
+                setGameFinished(false);
+                setFinishedData(null);
+                setIsLoadingRematch(false);
+              } catch (e) {
+                // ignore
+              }
+            }
             return newState;
           });
         } else if (data.type === 'error') {
