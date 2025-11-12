@@ -27,10 +27,13 @@ interface GameBoardProps {
 }
 
 const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
-  // Load initial state
+  // --- Debug helper ---
+  const debug = (...args: any[]) => console.log('[GameBoard]', ...args);
+
   const getInitialState = (): GameState => {
     const stored = loadGameState();
     if (stored && stored.player1 && stored.player2) {
+      debug('Restoring saved game state from localStorage:', stored);
       return {
         board: stored.board || Array(6).fill(null).map(() => Array(7).fill(0)),
         currentTurn: stored.currentTurn || 1,
@@ -41,6 +44,7 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
         lastMove: stored.lastMove,
       };
     }
+    debug('No stored state found. Initializing empty board.');
     return {
       board: Array(6).fill(null).map(() => Array(7).fill(0)),
       currentTurn: 1,
@@ -57,18 +61,14 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
 
   const usernameRef = useRef<string>(username);
   const pendingMoveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const getEffectiveStatus = useCallback((): 'waiting' | 'in_progress' | 'completed' | 'draw' => {
-    if (gameState.player1 && gameState.player2 && gameState.status === 'waiting') return 'in_progress';
-    return gameState.status;
-  }, [gameState.player1, gameState.player2, gameState.status]);
+  const PENDING_MOVE_TIMEOUT_MS = 2000;
 
   useEffect(() => { usernameRef.current = username; }, [username]);
 
-  const PENDING_MOVE_TIMEOUT_MS = 2000;
-
+  // --- Save state changes ---
   useEffect(() => {
     if (gameState.status !== 'waiting' || (gameState.player1 && gameState.player2)) {
+      debug('Saving game state to localStorage:', gameState);
       const stateToSave: StoredGameState = {
         board: gameState.board,
         currentTurn: gameState.currentTurn,
@@ -82,71 +82,37 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
     }
   }, [gameState]);
 
+  // --- WebSocket listener ---
   useEffect(() => {
-    if (gameState.status === 'completed' || gameState.status === 'draw') {
-      const timer = setTimeout(() => {}, 5000);
-      const updateEvent = new CustomEvent('leaderboard:update', {
-        detail: { gameStatus: gameState.status, winner: gameState.winner }
-      });
-      window.dispatchEvent(updateEvent);
-      return () => clearTimeout(timer);
-    }
-  }, [gameState.status, gameState.winner]);
-
-  useEffect(() => {
-    if (!websocket || websocket.readyState === WebSocket.CLOSED || websocket.readyState === WebSocket.CLOSING) return;
-
-    let gameStartTimeout: NodeJS.Timeout | null = null;
-    let messageReceived = false;
-
-    if (websocket.readyState === WebSocket.OPEN) {
-      gameStartTimeout = setTimeout(() => {
-        if (!messageReceived && websocket.readyState === WebSocket.OPEN) {
-          // No gameStart received within timeout - continue silently
-          void 0; // eslint-disable-next-line no-unused-expressions
-        }
-      }, 5000);
-    }
+    if (!websocket) return;
+    debug('WebSocket effect mounted. ReadyState:', websocket.readyState);
 
     const messageHandler = (event: MessageEvent) => {
-      messageReceived = true;
-      if (gameStartTimeout) {
-        clearTimeout(gameStartTimeout);
-        gameStartTimeout = null;
-      }
+      const data = JSON.parse(event.data);
+      debug('🔵 WS Received:', data.type, data.payload);
 
-      try {
-        const data = JSON.parse(event.data);
-        // DEBUG: temporary log to trace incoming WebSocket messages during rematch troubleshooting
-        // (remove after debugging)
-        // eslint-disable-next-line no-console
-        console.debug('[GameBoard WS RX]', data.type, data.payload || data);
+      switch (data.type) {
+        case 'leaderboardUpdate':
+          debug('📊 Leaderboard update received:', data.payload);
+          break;
 
-        if (data.type === 'leaderboardUpdate') {
-          window.dispatchEvent(new CustomEvent('leaderboard:update', { detail: data.payload || {} }));
-          return;
-        }
-
-        if (data.type === 'gameFinished') {
+        case 'gameFinished':
+          debug('🏁 Game finished. Winner:', data.payload?.winner);
           setFinishedData({
             winner: data.payload?.winner || null,
             isDraw: data.payload?.isDraw || false,
             botWon: data.payload?.botWon || false,
           });
           setGameFinished(true);
-          return;
-        }
+          break;
 
-        if (data.type === 'rematchTimeout') {
-          setFinishedData((prev: any) => prev ? {
-            ...prev,
-            timedOut: true,
-            timeoutMessage: data.payload?.message
-          } : null);
-          return;
-        }
+        case 'rematchTimeout':
+          debug('⏳ Rematch timeout received:', data.payload);
+          setFinishedData((prev: any) => prev ? { ...prev, timedOut: true, timeoutMessage: data.payload?.message } : null);
+          break;
 
-        if (data.type === 'opponentExited') {
+        case 'opponentExited':
+          debug('🚪 Opponent exited. Returning to main menu.');
           setGameFinished(true);
           setFinishedData({
             winner: null,
@@ -154,12 +120,12 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
             botWon: false,
             opponentExited: true,
           });
-          return;
-        }
+          break;
 
-        if (data.type === 'gameStart' || data.type === 'gameState') {
+        case 'gameStart':
+        case 'gameState': {
+          debug('🎮 Game update received (type:', data.type, ')');
           const payload = data.payload || {};
-          void payload; // Mark payload as intentionally unused if needed for type checking
           let board = payload.board;
           if (!Array.isArray(board)) board = Array(6).fill(null).map(() => Array(7).fill(0));
 
@@ -168,12 +134,11 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
             const username = player.Username || player.username;
             const id = player.ID || player.id;
             const isBot = player.IsBot || player.isBot || false;
-            if (!username && !id) return undefined;
-            return { username: username || id, id: id || username, isBot };
+            return { username, id, isBot };
           };
 
           setGameState((prev) => ({
-            board: board,
+            board,
             currentTurn: payload.currentTurn ?? prev.currentTurn ?? 1,
             status: payload.Status || payload.status || 'waiting',
             winner: payload.winner ? normalizePlayer(payload.winner) : prev.winner,
@@ -182,47 +147,52 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
             lastMove: payload.lastMove ?? prev.lastMove,
           }));
 
+          debug('🟢 Game state updated:', payload);
           setPendingMove(null);
           if (payload.Status === 'in_progress') {
             setGameFinished(false);
             setFinishedData(null);
             setIsLoadingRematch(false);
           }
+          break;
         }
-      } catch {
-        // ignore parsing errors
+
+        default:
+          debug('⚪ Unknown message type received:', data.type);
       }
     };
 
     websocket.onmessage = messageHandler;
 
+    websocket.onopen = () => debug('✅ WebSocket connection established.');
+    websocket.onclose = (e) => debug('❌ WebSocket closed:', e.reason || e.code);
+    websocket.onerror = (err) => debug('⚠️ WebSocket error:', err);
+
     return () => {
-      if (gameStartTimeout) clearTimeout(gameStartTimeout);
+      debug('🧹 Cleaning up WebSocket listeners.');
+      websocket.onmessage = null;
+      websocket.onclose = null;
+      websocket.onerror = null;
     };
-  }, [websocket, username]);
+  }, [websocket]);
 
-  useEffect(() => {
-    const gameEnded = gameState.status === 'completed' || gameState.status === 'draw';
-    if (gameEnded) {
-      const detail = { winner: gameState.winner?.username, isDraw: gameState.status === 'draw' };
-      window.dispatchEvent(new CustomEvent('leaderboard:update', { detail }));
-    }
-  }, [gameState.status, gameState.winner?.username]);
-
-  const handleExit = useCallback(() => {
-    clearGameState();
-    clearGameMode();
-    window.location.reload();
-  }, []);
-
+  // --- Play again handlers ---
   const handleGameFinishedPlayAgain = useCallback(() => {
-    if (!websocket || websocket.readyState !== WebSocket.OPEN) return;
+    if (!websocket || websocket.readyState !== WebSocket.OPEN) {
+      debug('❌ Cannot send playAgain — WebSocket not open');
+      return;
+    }
+    debug('🔁 Sending playAgain request...');
     setIsLoadingRematch(true);
     websocket.send(JSON.stringify({ type: 'playAgain', payload: {} }));
   }, [websocket]);
 
   const handleGameFinishedExit = useCallback(() => {
-    if (!websocket || websocket.readyState !== WebSocket.OPEN) return;
+    if (!websocket || websocket.readyState !== WebSocket.OPEN) {
+      debug('❌ Cannot send exitGame — WebSocket not open');
+      return;
+    }
+    debug('🚪 Exiting game session...');
     setIsLoadingRematch(true);
     websocket.send(JSON.stringify({ type: 'exitGame', payload: {} }));
     clearGameState();
@@ -230,22 +200,11 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
     window.location.reload();
   }, [websocket]);
 
-  useEffect(() => {
-    const player1Username = gameState.player1?.username;
-    const player2Username = gameState.player2?.username;
-    const isPlayer1 = username === player1Username;
-    const isPlayer2 = username === player2Username;
-
-    const effectiveStatus = getEffectiveStatus();
-    const myTurn = effectiveStatus === 'in_progress' &&
-      ((gameState.currentTurn === 1 && isPlayer1) || (gameState.currentTurn === 2 && isPlayer2));
-
-    setIsMyTurn(myTurn);
-  }, [gameState, username, getEffectiveStatus]);
-
+  // --- Move click handler ---
   const handleColumnClick = useCallback((col: number) => {
-    const effectiveStatus = getEffectiveStatus();
+    const effectiveStatus = gameState.status;
     if (!isMyTurn || effectiveStatus !== 'in_progress') return;
+    debug('🟡 Player clicked column', col);
 
     let row = 5;
     while (row >= 0 && gameState.board[row][col] !== 0) row--;
@@ -255,63 +214,21 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
     const currentPlayer = isPlayer1 ? 1 : 2;
     if (!websocket || websocket.readyState !== WebSocket.OPEN) return;
 
-    const prevBoard = gameState.board.map(r => [...r]);
-    const prevLastMove = gameState.lastMove;
-    const prevCurrentTurn = gameState.currentTurn;
+    websocket.send(JSON.stringify({ type: 'move', payload: { column: col } }));
+    debug('📤 Sent move to backend: column', col);
+  }, [isMyTurn, gameState, username, websocket]);
 
-    setGameState(prev => {
-      const newBoard = prev.board.map(r => [...r]);
-      newBoard[row][col] = currentPlayer;
-      return {
-        ...prev,
-        board: newBoard,
-        lastMove: { row, column: col, player: currentPlayer },
-        currentTurn: 3 - currentPlayer,
-      };
-    });
+  // --- Exit ---
+  const handleExit = useCallback(() => {
+    debug('🚪 Exiting game. Clearing state.');
+    clearGameState();
+    clearGameMode();
+    window.location.reload();
+  }, []);
 
-    setPendingMove({ row, col, player: currentPlayer });
-    try {
-      websocket.send(JSON.stringify({ type: 'move', payload: { column: col } }));
-    } catch {
-      setGameState({
-        ...gameState,
-        board: prevBoard,
-        lastMove: prevLastMove,
-        currentTurn: prevCurrentTurn,
-      });
-    }
-
-    pendingMoveTimeoutRef.current = setTimeout(() => {
-      setPendingMove(null);
-    }, PENDING_MOVE_TIMEOUT_MS);
-  }, [isMyTurn, gameState, username, websocket, getEffectiveStatus]);
-
-  const board = gameState.board && Array.isArray(gameState.board) ? gameState.board : Array(6).fill(null).map(() => Array(7).fill(0));
-
-  const renderGameStatus = () => {
-    const effectiveStatus = getEffectiveStatus();
-    switch (effectiveStatus) {
-      case 'waiting': return <div className="status">Waiting for opponent...</div>;
-      case 'in_progress': return (
-        <div className="status">
-          {isMyTurn ? "Your turn" : ((gameState.player1?.isBot || gameState.player2?.isBot) ? "Bot's turn" : "Opponent's turn")}
-        </div>
-      );
-      case 'completed': return <div className="status">{gameState.winner?.username === username ? "You won!" : "You lost!"}</div>;
-      case 'draw': return <div className="status">Game ended in a draw!</div>;
-      default: return null;
-    }
-  };
-
-  const handleCancelWaiting = useCallback(() => {
-    if (websocket && websocket.readyState === WebSocket.OPEN)
-      websocket.send(JSON.stringify({ type: 'cancelWaiting', payload: {} }));
-    handleExit();
-  }, [websocket, handleExit]);
-
+  // --- Render ---
   return (
-    <div className="game-board" role="region" aria-label="Connect 4 Game Board">
+    <div className="game-board">
       {gameFinished && finishedData && (
         <GameFinished
           winner={finishedData.winner}
@@ -322,27 +239,21 @@ const GameBoard: React.FC<GameBoardProps> = ({ websocket, username }) => {
           isLoading={isLoadingRematch}
         />
       )}
-      {renderGameStatus()}
-      {gameState.status === 'waiting' && loadGameMode() === 'friend' && (
-        <WaitingOverlay onCancel={handleCancelWaiting} />
-      )}
-      <div className="board" role="grid">
-        {board.map((row, rIdx) => (
-          <div key={rIdx} className="row" role="row">
-            {row.map((_, cIdx) => {
-              const hasPendingMove = pendingMove && pendingMove.row === rIdx && pendingMove.col === cIdx;
-              const cellValue = hasPendingMove ? pendingMove.player : row[cIdx];
-              return (
-                <div
-                  key={`${rIdx}-${cIdx}`}
-                  role="gridcell"
-                  onClick={() => handleColumnClick(cIdx)}
-                  tabIndex={isMyTurn ? 0 : -1}
-                  className={`cell ${cellValue === 1 ? 'player1' : cellValue === 2 ? 'player2' : ''}`}
-                  style={{ cursor: (isMyTurn && getEffectiveStatus() === 'in_progress') ? 'pointer' : 'default' }}
-                />
-              );
-            })}
+      <div className="status">
+        {gameState.status === 'waiting' && 'Waiting for opponent...'}
+        {gameState.status === 'in_progress' && (isMyTurn ? 'Your turn' : "Opponent's turn")}
+        {gameState.status === 'completed' && (gameState.winner?.username === username ? 'You won!' : 'You lost!')}
+      </div>
+      <div className="board">
+        {gameState.board.map((row, rIdx) => (
+          <div key={rIdx} className="row">
+            {row.map((cell, cIdx) => (
+              <div
+                key={`${rIdx}-${cIdx}`}
+                className={`cell ${cell === 1 ? 'player1' : cell === 2 ? 'player2' : ''}`}
+                onClick={() => handleColumnClick(cIdx)}
+              />
+            ))}
           </div>
         ))}
       </div>
